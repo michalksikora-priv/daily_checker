@@ -38,6 +38,7 @@
         <nav class="tabs">
             <button class="tab-button active" data-tab="daily">Daily Checker</button>
             <button class="tab-button" data-tab="stats">Statystyki</button>
+            <button class="tab-button" data-tab="backup">Kopia danych</button>
         </nav>
 
         <!-- Zakładka: Daily Checker -->
@@ -46,17 +47,6 @@
             <div class="date-selector card">
                 <label for="dateInput">Wybierz datę:</label>
                 <input type="date" id="dateInput" class="date-input">
-            </div>
-
-            <!-- Kopia zapasowa (eksport/import JSON) -->
-            <div class="backup-card card">
-                <div class="backup-title">Kopia danych</div>
-                <div class="backup-buttons">
-                    <button type="button" id="exportBtn" class="btn btn-secondary">⬇️ Eksport JSON</button>
-                    <button type="button" id="importBtn" class="btn btn-secondary">⬆️ Import JSON</button>
-                    <input type="file" id="importFile" accept="application/json" style="display:none">
-                </div>
-                <div class="backup-hint">Eksport zapisze Twoje dane w pliku .json. Import nadpisze dane w aplikacji.</div>
             </div>
 
             <!-- Formularz pytań -->
@@ -193,9 +183,22 @@
                 <div class="action-buttons">
                     <button type="submit" class="btn btn-primary">💾 Zapisz dzień</button>
                     <button type="button" id="clearBtn" class="btn btn-secondary">🗑️ Wyczyść formularz</button>
-                    <button type="button" id="deleteBtn" class="btn btn-danger">❌ Usuń zapis tego dnia</button>
-                </div>
+</div>
             </form>
+        </div>
+
+
+        <!-- Zakładka: Kopia danych -->
+        <div id="backup-tab" class="tab-content">
+            <div class="backup-card card">
+                <div class="backup-title">Kopia danych</div>
+                <div class="backup-buttons">
+                    <button type="button" id="exportBtn" class="btn btn-secondary">⬇️ Eksport JSON</button>
+                    <button type="button" id="importBtn" class="btn btn-secondary">⬆️ Import JSON</button>
+                    <input type="file" id="importFile" accept="application/json" style="display:none">
+                </div>
+                <div class="backup-hint">Eksport zapisze Twoje dane w pliku .json. Import nadpisze dane w aplikacji.</div>
+            </div>
         </div>
 
         <!-- Zakładka: Statystyki -->
@@ -220,13 +223,20 @@
 
                 <!-- Statystyki pytań TAK/NIE -->
                 <div class="card">
-                    <h2>✅ Procent dni z TAK</h2>
+                    <h2>✅ Realizacja celów</h2>
                     <div id="yesNoStats"></div>
                 </div>
 
-                <!-- Ostatnie 7 dni -->
+                <!-- Ostatnie dni (7/30/Lifetime) -->
                 <div class="card">
-                    <h2>📅 Ostatnie 7 dni</h2>
+                    <div class="card-header-row">
+                        <h2 id="recentTitle">📅 Ostatnie 7 dni</h2>
+                        <select id="recentPeriod" class="select">
+                            <option value="7" selected>Ostatnie 7 dni</option>
+                            <option value="30">Ostatnie 30 dni</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
+                    </div>
                     <div id="recentDays"></div>
                 </div>
             </div>

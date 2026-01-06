@@ -553,24 +553,21 @@ body {
     }
 }
 
-/* ===== KOPIA DANYCH (EXPORT/IMPORT) ===== */
-.backup-card .backup-title{
-    font-weight: 700;
-    margin-bottom: 10px;
-}
-
-.backup-card .backup-buttons{
+/* ===== DROPDOWN OKRESU (STATYSTYKI) ===== */
+.card-header-row{
     display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
 }
 
-.backup-card .backup-buttons .btn{
-    flex: 1 1 160px;
-}
-
-.backup-card .backup-hint{
-    margin-top: 10px;
-    font-size: 12px;
-    color: var(--text-secondary);
+.select{
+    padding: 10px 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--bg-main);
+    color: var(--text-primary);
+    cursor: pointer;
 }

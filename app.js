@@ -24,6 +24,88 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+
+// ===== KOPIA DANYCH (EXPORT / IMPORT JSON) =====
+
+function getStreakData() {
+    try {
+        const raw = localStorage.getItem(STREAK_KEY);
+        return raw ? JSON.parse(raw) : { current: 0, best: 0, lastDate: null };
+    } catch (e) {
+        return { current: 0, best: 0, lastDate: null };
+    }
+}
+
+function exportToJsonFile() {
+    const payload = {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        data: getAllData(),
+        streak: getStreakData()
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `daily-checker-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    showToast('✅ Wyeksportowano dane do pliku JSON');
+}
+
+function importFromJsonObject(payload) {
+    if (!payload || typeof payload !== 'object') throw new Error('Niepoprawny format pliku.');
+    if (!payload.data || typeof payload.data !== 'object') throw new Error('Brak sekcji "data" w pliku.');
+
+    saveAllData(payload.data);
+
+    if (payload.streak && typeof payload.streak === 'object') {
+        localStorage.setItem(STREAK_KEY, JSON.stringify(payload.streak));
+    }
+
+    updateStreakDisplay();
+    const dateInput = document.getElementById('dateInput');
+    if (dateInput && dateInput.value) loadFormData(dateInput.value);
+
+    showToast('✅ Zaimportowano dane z pliku JSON');
+}
+
+function setupBackupUi() {
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFile = document.getElementById('importFile');
+
+    if (exportBtn) exportBtn.addEventListener('click', exportToJsonFile);
+
+    if (importBtn && importFile) {
+        importBtn.addEventListener('click', () => importFile.click());
+
+        importFile.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+
+            const ok = confirm('Import nadpisze dane w aplikacji. Kontynuować?');
+            if (!ok) return;
+
+            try {
+                const text = await file.text();
+                const obj = JSON.parse(text);
+                importFromJsonObject(obj);
+            } catch (err) {
+                console.error(err);
+                showToast('❌ Nie udało się zaimportować pliku (sprawdź format JSON)');
+            }
+        });
+    }
+}
+
 // Funkcja do formatowania daty na czytelny format
 function formatDateReadable(dateStr) {
     const date = new Date(dateStr + 'T00:00:00');
@@ -44,93 +126,6 @@ function saveAllData(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-
-// ===== KOPIA DANYCH (EXPORT/IMPORT JSON) =====
-
-// Buduje obiekt kopii zapasowej (kompatybilny na przyszłość)
-function buildBackupObject() {
-    return {
-        schema: 'daily-checker-backup',
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        data: getAllData(),
-        streak: getStreakData()
-    };
-}
-
-// Pobiera rozsądną nazwę pliku (np. daily-checker-backup-2026-01-06.json)
-function getBackupFileName() {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `daily-checker-backup-${yyyy}-${mm}-${dd}.json`;
-}
-
-function downloadTextFile(filename, text, mimeType = 'application/json') {
-    const blob = new Blob([text], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    URL.revokeObjectURL(url);
-}
-
-function exportBackupToJson() {
-    try {
-        const backup = buildBackupObject();
-        const jsonText = JSON.stringify(backup, null, 2);
-        downloadTextFile(getBackupFileName(), jsonText);
-        showToast('✅ Wyeksportowano dane do pliku .json');
-    } catch (e) {
-        console.error(e);
-        showToast('❌ Nie udało się wyeksportować danych');
-    }
-}
-
-function isPlainObject(v) {
-    return v !== null && typeof v === 'object' && !Array.isArray(v);
-}
-
-function importBackupObject(backupObj) {
-    // Obsługa dwóch wariantów:
-    // 1) nowy: { data: {...}, streak: {...} }
-    // 2) awaryjnie: bez opakowania – bezpośrednio obiekt danych dziennych
-    let data = null;
-    let streak = null;
-
-    if (isPlainObject(backupObj) && (backupObj.data || backupObj.streak || backupObj.schema)) {
-        data = backupObj.data;
-        streak = backupObj.streak;
-    } else {
-        data = backupObj;
-    }
-
-    if (!isPlainObject(data)) {
-        throw new Error('Nieprawidłowy format: brak obiektu "data"');
-    }
-
-    // Walidacja streak (opcjonalna)
-    if (streak !== null && !isPlainObject(streak)) {
-        throw new Error('Nieprawidłowy format: "streak" nie jest obiektem');
-    }
-
-    // Nadpisanie localStorage
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-
-    if (streak) {
-        localStorage.setItem(STREAK_KEY, JSON.stringify(streak));
-    } else {
-        // Jeśli w pliku brak streak, to licz od nowa (bez kasowania danych dziennych)
-        localStorage.setItem(STREAK_KEY, JSON.stringify({ current: 0, best: 0, lastDate: null }));
-    }
-}
-
 // Pobieranie danych dla konkretnego dnia
 function getDayData(dateStr) {
     const allData = getAllData();
@@ -148,16 +143,6 @@ function saveDayData(dateStr, data) {
     saveAllData(allData);
 }
 
-// Usuwanie danych dla konkretnego dnia
-function deleteDayData(dateStr) {
-    const allData = getAllData();
-    if (allData[dateStr]) {
-        delete allData[dateStr];
-        saveAllData(allData);
-        return true;
-    }
-    return false;
-}
 
 // ===== ZARZĄDZANIE STREAK =====
 
@@ -370,6 +355,8 @@ function calculateStats() {
         });
         return {
             name: q.name,
+            yesCount,
+            total: totalDays,
             percentage: Math.round((yesCount / totalDays) * 100)
         };
     });
@@ -415,7 +402,7 @@ function displayStats() {
         statBar.innerHTML = `
             <div class="stat-bar-header">
                 <span class="stat-bar-name">${stat.name}</span>
-                <span class="stat-bar-value">${stat.percentage}%</span>
+                <span class="stat-bar-value">${stat.percentage}% (${stat.yesCount} z ${stat.total})</span>
             </div>
             <div class="stat-bar-track">
                 <div class="stat-bar-fill" style="width: ${stat.percentage}%"></div>
@@ -424,38 +411,100 @@ function displayStats() {
         yesNoContainer.appendChild(statBar);
     });
     
-    // Ostatnie 7 dni
-    displayRecentDays();
+    // Ostatnie dni (7/30/Lifetime)
+    const periodSelect = document.getElementById('recentPeriod');
+    const period = periodSelect ? periodSelect.value : '7';
+    displayRecentDays(period);
+
+    if (periodSelect && !periodSelect.dataset.bound) {
+        periodSelect.dataset.bound = '1';
+        periodSelect.addEventListener('change', () => displayRecentDays(periodSelect.value));
+    }
 }
 
-// Wyświetlanie ostatnich 7 dni
-function displayRecentDays() {
+// Wyświetlanie ostatnich dni (7/30) lub podsumowania Lifetime
+function displayRecentDays(period = '7') {
     const allData = getAllData();
-    const dates = Object.keys(allData)
+    const completedDates = Object.keys(allData)
         .filter(date => allData[date].completed)
         .sort()
-        .reverse()
-        .slice(0, 7);
-    
+        .reverse();
+
+    const titleEl = document.getElementById('recentTitle');
     const container = document.getElementById('recentDays');
+    if (!container) return;
+
     container.innerHTML = '';
-    
-    if (dates.length === 0) {
-        container.innerHTML = '<p style="color: var(--text-secondary);">Brak zapisanych dni.</p>';
+
+    if (period === 'lifetime') {
+        if (titleEl) titleEl.textContent = '📈 Lifetime';
+        if (completedDates.length === 0) {
+            container.innerHTML = '<div class="day-summary">Brak danych.</div>';
+            return;
+        }
+
+        let totalWater = 0;
+        let totalSteps = 0;
+        let totalSleep = 0;
+        let sleepCount = 0;
+        let totalRating = 0;
+
+        let yesTasks = 0;
+        const taskQuestions = [1,2,3,4,5,7,8];
+
+        completedDates.forEach(date => {
+            const d = allData[date];
+
+            const water = parseFloat(d.q1_details);
+            if (!isNaN(water)) totalWater += water;
+
+            const steps = parseInt(d.q2_details, 10);
+            if (!isNaN(steps)) totalSteps += steps;
+
+            const sleep = parseFloat(d.q6_answer);
+            if (!isNaN(sleep)) { totalSleep += sleep; sleepCount++; }
+
+            const rating = parseFloat(d.q9_answer);
+            if (!isNaN(rating)) totalRating += rating;
+
+            taskQuestions.forEach(q => { if (d[`q${q}_answer`] === true) yesTasks++; });
+        });
+
+        const days = completedDates.length;
+        const avgSleep = sleepCount ? (totalSleep / sleepCount).toFixed(1) : '0.0';
+        const avgRating = days ? (totalRating / days).toFixed(1) : '0.0';
+
+        container.innerHTML = `
+            <div class="stat-item"><span>Liczba zapisanych dni:</span><strong>${days}</strong></div>
+            <div class="stat-item"><span>Suma realizacji zadań:</span><strong>${yesTasks}</strong></div>
+            <div class="stat-item"><span>Suma wody:</span><strong>${totalWater.toFixed(1)} L</strong></div>
+            <div class="stat-item"><span>Suma kroków:</span><strong>${totalSteps.toLocaleString('pl-PL')}</strong></div>
+            <div class="stat-item"><span>Średnia snu:</span><strong>${avgSleep} h</strong></div>
+            <div class="stat-item"><span>Średnia ocena dnia:</span><strong>${avgRating}/10</strong></div>
+        `;
         return;
     }
-    
+
+    const n = period === '30' ? 30 : 7;
+    if (titleEl) titleEl.textContent = period === '30' ? '📅 Ostatnie 30 dni' : '📅 Ostatnie 7 dni';
+
+    const dates = completedDates.slice(0, n);
+
+    if (dates.length === 0) {
+        container.innerHTML = '<div class="day-summary">Brak danych.</div>';
+        return;
+    }
+
     dates.forEach(date => {
         const data = allData[date];
         const dayItem = document.createElement('div');
         dayItem.className = 'day-item';
-        
-        // Liczenie wypełnionych pytań TAK
+
         let yesCount = 0;
         [1, 2, 3, 4, 5, 7, 8].forEach(q => {
             if (data[`q${q}_answer`] === true) yesCount++;
         });
-        
+
         dayItem.innerHTML = `
             <div class="day-header">
                 <span class="day-date">${formatDateReadable(date)}</span>
@@ -473,13 +522,12 @@ function displayRecentDays() {
                 ${data.q8_details ? `<div class="day-detail-item">📈 Umiejętności: ${data.q8_details}</div>` : ''}
             </div>
         `;
-        
-        // Toggle szczegółów
+
         dayItem.addEventListener('click', () => {
             const details = dayItem.querySelector('.day-details');
             details.classList.toggle('show');
         });
-        
+
         container.appendChild(dayItem);
     });
 }
@@ -527,6 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Nawigacja zakładek
     setupTabs();
+    setupBackupUi();
     
     // ===== EVENT LISTENERS =====
     
@@ -557,56 +606,8 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('🗑️ Formularz wyczyszczony');
         }
     });
-
-    // Eksport / Import danych (JSON)
-    const exportBtn = document.getElementById('exportBtn');
-    const importBtn = document.getElementById('importBtn');
-    const importFile = document.getElementById('importFile');
-
-    if (exportBtn) {
-        exportBtn.addEventListener('click', () => exportBackupToJson());
-    }
-
-    if (importBtn && importFile) {
-        importBtn.addEventListener('click', () => importFile.click());
-
-        importFile.addEventListener('change', (e) => {
-            const file = e.target.files && e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = () => {
-                try {
-                    const text = String(reader.result || '');
-                    const obj = JSON.parse(text);
-
-                    if (!confirm('Import nadpisze dane w aplikacji. Kontynuować?')) {
-                        importFile.value = '';
-                        return;
-                    }
-
-                    importBackupObject(obj);
-
-                    // Odśwież UI
-                    updateStreakDisplay();
-                    const selectedDate = dateInput.value;
-                    loadFormData(selectedDate);
-
-                    showToast('✅ Zaimportowano dane z pliku .json');
-                } catch (err) {
-                    console.error(err);
-                    showToast('❌ Import nieudany: zły format pliku');
-                } finally {
-                    // pozwala ponownie wczytać ten sam plik
-                    importFile.value = '';
-                }
-            };
-            reader.readAsText(file);
-        });
-    }
-
+    
     // Usuwanie zapisu dnia
-    document.getElementById('deleteBtn').addEventListener('click', () => {
         const selectedDate = dateInput.value;
         
         if (confirm(`Czy na pewno chcesz usunąć zapis z dnia ${formatDateReadable(selectedDate)}?`)) {
