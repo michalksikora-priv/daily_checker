@@ -1,6 +1,6 @@
 // Service Worker dla Daily Checker PWA
 // Wersja cache - ZMIEŃ TĘ LICZBĘ PO KAŻDEJ AKTUALIZACJI!
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `daily-checker-${CACHE_VERSION}`;
 
 // Bazowa ścieżka wynikająca z zakresu (scope) Service Workera.
