@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#4F46E5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Daily Checker">
+    <title>Daily Checker</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Toast dla powiadomień -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Container główny -->
+    <div class="container">
+        <!-- Nagłówek aplikacji -->
+        <header class="app-header">
+            <h1>📋 Daily Checker</h1>
+            <div class="streak-display">
+                <div class="streak-item">
+                    <span class="streak-label">Aktualny streak</span>
+                    <span class="streak-value" id="currentStreak">0</span>
+                </div>
+                <div class="streak-item">
+                    <span class="streak-label">Najdłuższy streak</span>
+                    <span class="streak-value" id="bestStreak">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Nawigacja zakładek -->
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="daily">Daily Checker</button>
+            <button class="tab-button" data-tab="stats">Statystyki</button>
+        </nav>
+
+        <!-- Zakładka: Daily Checker -->
+        <div id="daily-tab" class="tab-content active">
+            <!-- Wybór daty -->
+            <div class="date-selector card">
+                <label for="dateInput">Wybierz datę:</label>
+                <input type="date" id="dateInput" class="date-input">
+            </div>
+
+            <!-- Kopia zapasowa (eksport/import JSON) -->
+            <div class="backup-card card">
+                <div class="backup-title">Kopia danych</div>
+                <div class="backup-buttons">
+                    <button type="button" id="exportBtn" class="btn btn-secondary">⬇️ Eksport JSON</button>
+                    <button type="button" id="importBtn" class="btn btn-secondary">⬆️ Import JSON</button>
+                    <input type="file" id="importFile" accept="application/json" style="display:none">
+                </div>
+                <div class="backup-hint">Eksport zapisze Twoje dane w pliku .json. Import nadpisze dane w aplikacji.</div>
+            </div>
+
+            <!-- Formularz pytań -->
+            <form id="dailyForm" class="daily-form">
+                <!-- Pytanie 1 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy wypito min. 2L wody?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q1_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q1_details">Ilość wody (litry):</label>
+                        <input type="number" id="q1_details" min="0" max="10" step="0.1" placeholder="0.0">
+                    </div>
+                </div>
+
+                <!-- Pytanie 2 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy zrobiono min. 5000 kroków?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q2_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q2_details">Ilość kroków:</label>
+                        <input type="number" id="q2_details" min="0" placeholder="0">
+                    </div>
+                </div>
+
+                <!-- Pytanie 3 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy zrobiłeś trening?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q3_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q3_details">Opisz szczegóły:</label>
+                        <textarea id="q3_details" rows="2" placeholder="Np. bieganie 5km"></textarea>
+                    </div>
+                </div>
+
+                <!-- Pytanie 4 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy zrobiłeś rozciąganie + core?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q4_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q4_details">Opisz szczegóły:</label>
+                        <textarea id="q4_details" rows="2" placeholder="Np. joga 20 minut"></textarea>
+                    </div>
+                </div>
+
+                <!-- Pytanie 5 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy wziąłeś suplementy/witaminy?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q5_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Pytanie 6 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Ile godzin spałeś?</span>
+                    </div>
+                    <div class="question-details">
+                        <label for="q6_answer">Godziny snu:</label>
+                        <input type="number" id="q6_answer" min="0" max="24" step="0.5" placeholder="0.0">
+                    </div>
+                </div>
+
+                <!-- Pytanie 7 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy czytałeś książkę?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q7_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q7_details">Jaką książkę?</label>
+                        <textarea id="q7_details" rows="2" placeholder="Tytuł książki"></textarea>
+                    </div>
+                </div>
+
+                <!-- Pytanie 8 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Czy podniosłeś dzisiaj swoje umiejętności?</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="q8_answer">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="question-details">
+                        <label for="q8_details">Opisz szczegóły:</label>
+                        <textarea id="q8_details" rows="2" placeholder="Np. kurs online"></textarea>
+                    </div>
+                </div>
+
+                <!-- Pytanie 9 -->
+                <div class="question-card card">
+                    <div class="question-header">
+                        <span class="question-text">Oceń dzień od 0 do 10</span>
+                        <span class="rating-value" id="ratingValue">5</span>
+                    </div>
+                    <div class="question-details">
+                        <input type="range" id="q9_answer" min="0" max="10" value="5" class="slider">
+                        <div class="slider-labels">
+                            <span>0</span>
+                            <span>5</span>
+                            <span>10</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Przyciski akcji -->
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary">💾 Zapisz dzień</button>
+                    <button type="button" id="clearBtn" class="btn btn-secondary">🗑️ Wyczyść formularz</button>
+                    <button type="button" id="deleteBtn" class="btn btn-danger">❌ Usuń zapis tego dnia</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Zakładka: Statystyki -->
+        <div id="stats-tab" class="tab-content">
+            <div class="stats-container">
+                <!-- Podsumowanie -->
+                <div class="card stats-summary">
+                    <h2>📊 Podsumowanie</h2>
+                    <div class="stat-item">
+                        <span>Liczba zapisanych dni:</span>
+                        <strong id="statTotalDays">0</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Średnia snu:</span>
+                        <strong id="statAvgSleep">0.0h</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>Średnia ocena dnia:</span>
+                        <strong id="statAvgRating">0.0</strong>
+                    </div>
+                </div>
+
+                <!-- Statystyki pytań TAK/NIE -->
+                <div class="card">
+                    <h2>✅ Procent dni z TAK</h2>
+                    <div id="yesNoStats"></div>
+                </div>
+
+                <!-- Ostatnie 7 dni -->
+                <div class="card">
+                    <h2>📅 Ostatnie 7 dni</h2>
+                    <div id="recentDays"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
