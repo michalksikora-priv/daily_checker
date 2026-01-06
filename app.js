@@ -2,315 +2,195 @@
 const STORAGE_KEY = 'dailyCheckerData';
 const STREAK_KEY = 'dailyCheckerStreak';
 
-// ===== FUNKCJE POMOCNICZE =====
-
-// Funkcja do pokazywania toastów (powiadomień)
-function showToast(message) {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.classList.add('show');
-    
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 3000);
-}
-
-// Funkcja do formatowania daty na YYYY-MM-DD
-function formatDate(date) {
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-
-// ===== KOPIA DANYCH (EXPORT / IMPORT JSON) =====
-
-function getStreakData() {
-    try {
-        const raw = localStorage.getItem(STREAK_KEY);
-        return raw ? JSON.parse(raw) : { current: 0, best: 0, lastDate: null };
-    } catch (e) {
-        return { current: 0, best: 0, lastDate: null };
-    }
-}
-
-function exportToJsonFile() {
-    const payload = {
-        schemaVersion: 1,
-        exportedAt: new Date().toISOString(),
-        data: getAllData(),
-        streak: getStreakData()
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    const stamp = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `daily-checker-backup-${stamp}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    showToast('✅ Wyeksportowano dane do pliku JSON');
-}
-
-function importFromJsonObject(payload) {
-    if (!payload || typeof payload !== 'object') throw new Error('Niepoprawny format pliku.');
-    if (!payload.data || typeof payload.data !== 'object') throw new Error('Brak sekcji "data" w pliku.');
-
-    saveAllData(payload.data);
-
-    if (payload.streak && typeof payload.streak === 'object') {
-        localStorage.setItem(STREAK_KEY, JSON.stringify(payload.streak));
-    }
-
-    updateStreakDisplay();
-    const dateInput = document.getElementById('dateInput');
-    if (dateInput && dateInput.value) loadFormData(dateInput.value);
-
-    showToast('✅ Zaimportowano dane z pliku JSON');
-}
-
-function setupBackupUi() {
-    const exportBtn = document.getElementById('exportBtn');
-    const importBtn = document.getElementById('importBtn');
-    const importFile = document.getElementById('importFile');
-
-    if (exportBtn) exportBtn.addEventListener('click', exportToJsonFile);
-
-    if (importBtn && importFile) {
-        importBtn.addEventListener('click', () => importFile.click());
-
-        importFile.addEventListener('change', async (e) => {
-            const file = e.target.files && e.target.files[0];
-            e.target.value = '';
-            if (!file) return;
-
-            const ok = confirm('Import nadpisze dane w aplikacji. Kontynuować?');
-            if (!ok) return;
-
-            try {
-                const text = await file.text();
-                const obj = JSON.parse(text);
-                importFromJsonObject(obj);
-            } catch (err) {
-                console.error(err);
-                showToast('❌ Nie udało się zaimportować pliku (sprawdź format JSON)');
-            }
-        });
-    }
-}
-
-// Funkcja do formatowania daty na czytelny format
-function formatDateReadable(dateStr) {
-    const date = new Date(dateStr + 'T00:00:00');
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    return date.toLocaleDateString('pl-PL', options);
-}
-
-// ===== ZARZĄDZANIE DANYMI =====
-
-// Pobieranie wszystkich danych z localStorage
+// ===== POMOCNICZE FUNKCJE STORAGE =====
 function getAllData() {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : {};
+    try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    } catch (e) {
+        console.warn('Błąd odczytu danych:', e);
+        return {};
+    }
 }
 
-// Zapisywanie wszystkich danych do localStorage
 function saveAllData(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
-// Pobieranie danych dla konkretnego dnia
-function getDayData(dateStr) {
-    const allData = getAllData();
-    return allData[dateStr] || null;
-}
-
-// Zapisywanie danych dla konkretnego dnia
-function saveDayData(dateStr, data) {
-    const allData = getAllData();
-    allData[dateStr] = {
-        ...data,
-        timestamp: new Date().toISOString(),
-        completed: true
-    };
-    saveAllData(allData);
-}
-
-
-// ===== ZARZĄDZANIE STREAK =====
-
-// Pobieranie danych streak
 function getStreakData() {
-    const data = localStorage.getItem(STREAK_KEY);
-    return data ? JSON.parse(data) : { current: 0, best: 0, lastDate: null };
+    try {
+        return JSON.parse(localStorage.getItem(STREAK_KEY)) || {
+            currentStreak: 0,
+            longestStreak: 0,
+            lastCompletedDate: null
+        };
+    } catch (e) {
+        console.warn('Błąd odczytu streak:', e);
+        return { currentStreak: 0, longestStreak: 0, lastCompletedDate: null };
+    }
 }
 
-// Zapisywanie danych streak
-function saveStreakData(streakData) {
-    localStorage.setItem(STREAK_KEY, JSON.stringify(streakData));
+function saveStreakData(data) {
+    localStorage.setItem(STREAK_KEY, JSON.stringify(data));
 }
 
-// Obliczanie streak
-function calculateStreak() {
-    const allData = getAllData();
-    const dates = Object.keys(allData)
-        .filter(date => allData[date].completed)
-        .sort()
-        .reverse(); // Najnowsze daty pierwsze
-    
-    if (dates.length === 0) {
-        return { current: 0, best: 0 };
-    }
-    
-    let currentStreak = 0;
-    let bestStreak = 0;
-    let tempStreak = 0;
-    const today = formatDate(new Date());
-    let checkDate = new Date();
-    
-    // Sprawdzanie aktualnego streaka
-    for (let i = 0; i < 365; i++) { // Maksymalnie rok wstecz
-        const dateStr = formatDate(checkDate);
-        
-        if (dates.includes(dateStr)) {
-            tempStreak++;
-            if (dateStr === today || i > 0) {
-                currentStreak = tempStreak;
-            }
-        } else {
-            break;
-        }
-        
-        checkDate.setDate(checkDate.getDate() - 1);
-    }
-    
-    // Sprawdzanie najlepszego streaka w całej historii
-    tempStreak = 1;
-    for (let i = 0; i < dates.length - 1; i++) {
-        const current = new Date(dates[i] + 'T00:00:00');
-        const next = new Date(dates[i + 1] + 'T00:00:00');
-        const diffDays = Math.round((current - next) / (1000 * 60 * 60 * 24));
-        
-        if (diffDays === 1) {
-            tempStreak++;
-        } else {
-            if (tempStreak > bestStreak) {
-                bestStreak = tempStreak;
-            }
-            tempStreak = 1;
-        }
-    }
-    
-    if (tempStreak > bestStreak) {
-        bestStreak = tempStreak;
-    }
-    
-    // Jeśli nie wypełniono dzisiaj ani wczoraj, streak = 0
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = formatDate(yesterday);
-    
-    if (!dates.includes(today) && !dates.includes(yesterdayStr)) {
-        currentStreak = 0;
-    }
-    
-    return { current: currentStreak, best: Math.max(bestStreak, currentStreak) };
+// ===== FORMATOWANIE DAT =====
+function getTodayDateString() {
+    const today = new Date();
+    return today.toISOString().split('T')[0]; // YYYY-MM-DD
 }
 
-// Aktualizacja wyświetlania streak
-function updateStreakDisplay() {
-    const streak = calculateStreak();
-    document.getElementById('currentStreak').textContent = streak.current;
-    document.getElementById('bestStreak').textContent = streak.best;
-    
-    saveStreakData({
-        current: streak.current,
-        best: streak.best,
-        lastDate: formatDate(new Date())
-    });
+function formatDatePL(dateString) {
+    const [y, m, d] = dateString.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return new Intl.DateTimeFormat('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
 }
 
-// ===== ZARZĄDZANIE FORMULARZEM =====
+function isYesterday(dateStr, compareToStr) {
+    const d1 = new Date(dateStr);
+    const d2 = new Date(compareToStr);
+    const diff = d2 - d1;
+    return diff > 0 && diff <= 36 * 60 * 60 * 1000; // do 36h tolerancji
+}
 
-// Ładowanie danych do formularza
-function loadFormData(dateStr) {
-    const data = getDayData(dateStr);
-    
-    if (data) {
-        // Ładowanie odpowiedzi
-        for (let i = 1; i <= 9; i++) {
-            const answerId = `q${i}_answer`;
-            const answerEl = document.getElementById(answerId);
-            
-            if (answerEl) {
-                if (answerEl.type === 'checkbox') {
-                    answerEl.checked = data[`q${i}_answer`] || false;
-                } else if (answerEl.type === 'range' || answerEl.type === 'number') {
-                    answerEl.value = data[`q${i}_answer`] || (answerEl.type === 'range' ? 5 : 0);
-                }
-            }
-            
-            // Ładowanie szczegółów
-            const detailsId = `q${i}_details`;
-            const detailsEl = document.getElementById(detailsId);
-            if (detailsEl) {
-                detailsEl.value = data[`q${i}_details`] || '';
-            }
-        }
-        
-        // Aktualizacja wyświetlania slidera
-        updateRatingDisplay();
+// ===== TOAST =====
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ===== STREAK =====
+function updateStreakOnComplete(dateStr) {
+    const streak = getStreakData();
+    const last = streak.lastCompletedDate;
+
+    if (!last) {
+        streak.currentStreak = 1;
+        streak.longestStreak = Math.max(streak.longestStreak, 1);
+        streak.lastCompletedDate = dateStr;
+        saveStreakData(streak);
+        return;
+    }
+
+    if (last === dateStr) {
+        // już dziś zapisane
+        return;
+    }
+
+    if (isYesterday(last, dateStr)) {
+        streak.currentStreak += 1;
     } else {
-        clearForm();
+        streak.currentStreak = 1;
     }
+
+    streak.longestStreak = Math.max(streak.longestStreak, streak.currentStreak);
+    streak.lastCompletedDate = dateStr;
+    saveStreakData(streak);
 }
 
-// Czyszczenie formularza
-function clearForm() {
-    document.getElementById('dailyForm').reset();
-    // Resetowanie slidera do 5
-    document.getElementById('q9_answer').value = 5;
+function updateStreakDisplay() {
+    const streak = getStreakData();
+    document.getElementById('currentStreak').textContent = streak.currentStreak;
+    document.getElementById('longestStreak').textContent = streak.longestStreak;
+}
+
+// ===== FORM =====
+function getFormDataFromUI() {
+    return {
+        completed: true,
+        q1: document.getElementById('q1_answer').checked,
+        q1_details: document.getElementById('q1_details').value || '',
+        q2: document.getElementById('q2_answer').checked,
+        q2_details: document.getElementById('q2_details').value || '',
+        q3: document.getElementById('q3_answer').checked,
+        q3_details: document.getElementById('q3_details').value || '',
+        q4: document.getElementById('q4_answer').checked,
+        q4_details: document.getElementById('q4_details').value || '',
+        q5: document.getElementById('q5_answer').checked,
+        q5_details: document.getElementById('q5_details').value || '',
+        q6: parseFloat(document.getElementById('q6_answer').value) || 0,
+        q7: document.getElementById('q7_answer').checked,
+        q7_details: document.getElementById('q7_details').value || '',
+        q8: document.getElementById('q8_answer').checked,
+        q8_details: document.getElementById('q8_details').value || '',
+        q9: parseInt(document.getElementById('q9_answer').value, 10) || 0,
+        savedAt: new Date().toISOString()
+    };
+}
+
+function loadFormData(dateStr) {
+    const data = getAllData();
+    const entry = data[dateStr];
+
+    if (!entry) {
+        clearFormUI(false);
+        updateRatingDisplay();
+        return;
+    }
+
+    document.getElementById('q1_answer').checked = !!entry.q1;
+    document.getElementById('q1_details').value = entry.q1_details || '';
+
+    document.getElementById('q2_answer').checked = !!entry.q2;
+    document.getElementById('q2_details').value = entry.q2_details || '';
+
+    document.getElementById('q3_answer').checked = !!entry.q3;
+    document.getElementById('q3_details').value = entry.q3_details || '';
+
+    document.getElementById('q4_answer').checked = !!entry.q4;
+    document.getElementById('q4_details').value = entry.q4_details || '';
+
+    document.getElementById('q5_answer').checked = !!entry.q5;
+    document.getElementById('q5_details').value = entry.q5_details || '';
+
+    document.getElementById('q6_answer').value = entry.q6 ?? 0;
+
+    document.getElementById('q7_answer').checked = !!entry.q7;
+    document.getElementById('q7_details').value = entry.q7_details || '';
+
+    document.getElementById('q8_answer').checked = !!entry.q8;
+    document.getElementById('q8_details').value = entry.q8_details || '';
+
+    document.getElementById('q9_answer').value = entry.q9 ?? 0;
     updateRatingDisplay();
 }
 
-// Pobieranie danych z formularza
-function getFormData() {
-    const data = {};
-    
-    for (let i = 1; i <= 9; i++) {
-        const answerId = `q${i}_answer`;
-        const answerEl = document.getElementById(answerId);
-        
-        if (answerEl) {
-            if (answerEl.type === 'checkbox') {
-                data[`q${i}_answer`] = answerEl.checked;
-            } else if (answerEl.type === 'range' || answerEl.type === 'number') {
-                data[`q${i}_answer`] = parseFloat(answerEl.value) || 0;
-            }
-        }
-        
-        // Pobieranie szczegółów
-        const detailsId = `q${i}_details`;
-        const detailsEl = document.getElementById(detailsId);
-        if (detailsEl) {
-            data[`q${i}_details`] = detailsEl.value.trim();
-        }
-    }
-    
-    return data;
+function clearFormUI(showMsg = true) {
+    document.getElementById('q1_answer').checked = false;
+    document.getElementById('q1_details').value = '';
+
+    document.getElementById('q2_answer').checked = false;
+    document.getElementById('q2_details').value = '';
+
+    document.getElementById('q3_answer').checked = false;
+    document.getElementById('q3_details').value = '';
+
+    document.getElementById('q4_answer').checked = false;
+    document.getElementById('q4_details').value = '';
+
+    document.getElementById('q5_answer').checked = false;
+    document.getElementById('q5_details').value = '';
+
+    document.getElementById('q6_answer').value = '0';
+
+    document.getElementById('q7_answer').checked = false;
+    document.getElementById('q7_details').value = '';
+
+    document.getElementById('q8_answer').checked = false;
+    document.getElementById('q8_details').value = '';
+
+    document.getElementById('q9_answer').value = '5';
+    updateRatingDisplay();
+
+    if (showMsg) showToast('Formularz wyczyszczony.');
 }
 
-// Aktualizacja wyświetlania oceny slidera
+// ===== SLIDER DISPLAY =====
 function updateRatingDisplay() {
     const slider = document.getElementById('q9_answer');
     const display = document.getElementById('ratingValue');
+    if (!slider || !display) return;
     display.textContent = slider.value;
 }
 
@@ -325,310 +205,260 @@ function calculateStats() {
     if (totalDays === 0) {
         return {
             totalDays: 0,
+            avgWater: 0,
+            waterDays: 0,
+            avgSteps: 0,
+            stepsDays: 0,
             avgSleep: 0,
             avgRating: 0,
-            yesNoStats: []
+            bestRating: 0,
+            worstRating: 0,
+            booksDays: 0,
+            skillsDays: 0
         };
     }
-    
+
+    let totalWater = 0;
+    let waterDays = 0;
+    let stepsDays = 0;
+    let totalSteps = 0;
     let totalSleep = 0;
     let totalRating = 0;
-    let sleepCount = 0;
-    
-    // Statystyki pytań TAK/NIE
-    const yesNoQuestions = [
-        { id: 1, name: 'Wypito min. 2L wody' },
-        { id: 2, name: 'Zrobiono min. 5000 kroków' },
-        { id: 3, name: 'Zrobiono trening' },
-        { id: 4, name: 'Zrobiono rozciąganie + core' },
-        { id: 5, name: 'Wzięto suplementy/witaminy' },
-        { id: 7, name: 'Czytano książkę' },
-        { id: 8, name: 'Podniesiono umiejętności' }
-    ];
-    
-    const yesNoStats = yesNoQuestions.map(q => {
-        let yesCount = 0;
-        dates.forEach(date => {
-            if (allData[date][`q${q.id}_answer`] === true) {
-                yesCount++;
-            }
-        });
-        return {
-            name: q.name,
-            yesCount,
-            total: totalDays,
-            percentage: Math.round((yesCount / totalDays) * 100)
-        };
-    });
-    
-    // Obliczanie średnich
+    let bestRating = -Infinity;
+    let worstRating = Infinity;
+    let booksDays = 0;
+    let skillsDays = 0;
+
     dates.forEach(date => {
-        const data = allData[date];
-        
-        if (data.q6_answer) {
-            totalSleep += data.q6_answer;
-            sleepCount++;
+        const entry = allData[date];
+
+        // woda
+        if (entry.q1 && (entry.q1_details || '').trim() !== '') {
+            const w = parseFloat(entry.q1_details);
+            if (!isNaN(w)) {
+                totalWater += w;
+                waterDays += 1;
+            }
         }
-        
-        if (data.q9_answer !== undefined) {
-            totalRating += data.q9_answer;
+
+        // kroki
+        if (entry.q2 && (entry.q2_details || '').trim() !== '') {
+            const s = parseInt(entry.q2_details, 10);
+            if (!isNaN(s)) {
+                totalSteps += s;
+                stepsDays += 1;
+            }
         }
+
+        // sen
+        totalSleep += (entry.q6 || 0);
+
+        // ocena dnia
+        const r = entry.q9 ?? 0;
+        totalRating += r;
+        bestRating = Math.max(bestRating, r);
+        worstRating = Math.min(worstRating, r);
+
+        // książka
+        if (entry.q7) booksDays += 1;
+
+        // umiejętności
+        if (entry.q8) skillsDays += 1;
     });
-    
+
     return {
         totalDays,
-        avgSleep: sleepCount > 0 ? (totalSleep / sleepCount).toFixed(1) : 0,
-        avgRating: (totalRating / totalDays).toFixed(1),
-        yesNoStats
+        avgWater: waterDays ? (totalWater / waterDays) : 0,
+        waterDays,
+        avgSteps: stepsDays ? (totalSteps / stepsDays) : 0,
+        stepsDays,
+        avgSleep: totalDays ? (totalSleep / totalDays) : 0,
+        avgRating: totalDays ? (totalRating / totalDays) : 0,
+        bestRating: isFinite(bestRating) ? bestRating : 0,
+        worstRating: isFinite(worstRating) ? worstRating : 0,
+        booksDays,
+        skillsDays
     };
 }
 
-// Wyświetlanie statystyk
-function displayStats() {
+function renderStats() {
     const stats = calculateStats();
-    
-    // Podsumowanie
-    document.getElementById('statTotalDays').textContent = stats.totalDays;
-    document.getElementById('statAvgSleep').textContent = `${stats.avgSleep}h`;
-    document.getElementById('statAvgRating').textContent = stats.avgRating;
-    
-    // Statystyki TAK/NIE
-    const yesNoContainer = document.getElementById('yesNoStats');
-    yesNoContainer.innerHTML = '';
-    
-    stats.yesNoStats.forEach(stat => {
-        const statBar = document.createElement('div');
-        statBar.className = 'stat-bar';
-        statBar.innerHTML = `
-            <div class="stat-bar-header">
-                <span class="stat-bar-name">${stat.name}</span>
-                <span class="stat-bar-value">${stat.percentage}% (${stat.yesCount} z ${stat.total})</span>
-            </div>
-            <div class="stat-bar-track">
-                <div class="stat-bar-fill" style="width: ${stat.percentage}%"></div>
-            </div>
-        `;
-        yesNoContainer.appendChild(statBar);
-    });
-    
-    // Ostatnie dni (7/30/Lifetime)
-    const periodSelect = document.getElementById('recentPeriod');
-    const period = periodSelect ? periodSelect.value : '7';
-    displayRecentDays(period);
 
-    if (periodSelect && !periodSelect.dataset.bound) {
-        periodSelect.dataset.bound = '1';
-        periodSelect.addEventListener('change', () => displayRecentDays(periodSelect.value));
-    }
+    document.getElementById('stat_totalDays').textContent = stats.totalDays;
+    document.getElementById('stat_avgWater').textContent = stats.avgWater.toFixed(1);
+    document.getElementById('stat_waterDays').textContent = stats.waterDays;
+    document.getElementById('stat_avgSteps').textContent = Math.round(stats.avgSteps);
+    document.getElementById('stat_stepsDays').textContent = stats.stepsDays;
+    document.getElementById('stat_avgSleep').textContent = stats.avgSleep.toFixed(1);
+    document.getElementById('stat_avgRating').textContent = stats.avgRating.toFixed(1);
+    document.getElementById('stat_bestRating').textContent = stats.bestRating;
+    document.getElementById('stat_worstRating').textContent = stats.worstRating;
+    document.getElementById('stat_booksDays').textContent = stats.booksDays;
+    document.getElementById('stat_skillsDays').textContent = stats.skillsDays;
 }
 
-// Wyświetlanie ostatnich dni (7/30) lub podsumowania Lifetime
-function displayRecentDays(period = '7') {
-    const allData = getAllData();
-    const completedDates = Object.keys(allData)
-        .filter(date => allData[date].completed)
-        .sort()
-        .reverse();
-
-    const titleEl = document.getElementById('recentTitle');
-    const container = document.getElementById('recentDays');
-    if (!container) return;
-
-    container.innerHTML = '';
-
-    if (period === 'lifetime') {
-        if (titleEl) titleEl.textContent = '📈 Lifetime';
-        if (completedDates.length === 0) {
-            container.innerHTML = '<div class="day-summary">Brak danych.</div>';
-            return;
-        }
-
-        let totalWater = 0;
-        let totalSteps = 0;
-        let totalSleep = 0;
-        let sleepCount = 0;
-        let totalRating = 0;
-
-        let yesTasks = 0;
-        const taskQuestions = [1,2,3,4,5,7,8];
-
-        completedDates.forEach(date => {
-            const d = allData[date];
-
-            const water = parseFloat(d.q1_details);
-            if (!isNaN(water)) totalWater += water;
-
-            const steps = parseInt(d.q2_details, 10);
-            if (!isNaN(steps)) totalSteps += steps;
-
-            const sleep = parseFloat(d.q6_answer);
-            if (!isNaN(sleep)) { totalSleep += sleep; sleepCount++; }
-
-            const rating = parseFloat(d.q9_answer);
-            if (!isNaN(rating)) totalRating += rating;
-
-            taskQuestions.forEach(q => { if (d[`q${q}_answer`] === true) yesTasks++; });
-        });
-
-        const days = completedDates.length;
-        const avgSleep = sleepCount ? (totalSleep / sleepCount).toFixed(1) : '0.0';
-        const avgRating = days ? (totalRating / days).toFixed(1) : '0.0';
-
-        container.innerHTML = `
-            <div class="stat-item"><span>Liczba zapisanych dni:</span><strong>${days}</strong></div>
-            <div class="stat-item"><span>Suma realizacji zadań:</span><strong>${yesTasks}</strong></div>
-            <div class="stat-item"><span>Suma wody:</span><strong>${totalWater.toFixed(1)} L</strong></div>
-            <div class="stat-item"><span>Suma kroków:</span><strong>${totalSteps.toLocaleString('pl-PL')}</strong></div>
-            <div class="stat-item"><span>Średnia snu:</span><strong>${avgSleep} h</strong></div>
-            <div class="stat-item"><span>Średnia ocena dnia:</span><strong>${avgRating}/10</strong></div>
-        `;
-        return;
-    }
-
-    const n = period === '30' ? 30 : 7;
-    if (titleEl) titleEl.textContent = period === '30' ? '📅 Ostatnie 30 dni' : '📅 Ostatnie 7 dni';
-
-    const dates = completedDates.slice(0, n);
-
-    if (dates.length === 0) {
-        container.innerHTML = '<div class="day-summary">Brak danych.</div>';
-        return;
-    }
-
-    dates.forEach(date => {
-        const data = allData[date];
-        const dayItem = document.createElement('div');
-        dayItem.className = 'day-item';
-
-        let yesCount = 0;
-        [1, 2, 3, 4, 5, 7, 8].forEach(q => {
-            if (data[`q${q}_answer`] === true) yesCount++;
-        });
-
-        dayItem.innerHTML = `
-            <div class="day-header">
-                <span class="day-date">${formatDateReadable(date)}</span>
-                <span class="day-rating">⭐ ${data.q9_answer || 0}/10</span>
-            </div>
-            <div class="day-summary">
-                ✅ ${yesCount}/7 zadań • 💤 ${data.q6_answer || 0}h snu
-            </div>
-            <div class="day-details">
-                ${data.q1_details ? `<div class="day-detail-item">💧 Woda: ${data.q1_details}L</div>` : ''}
-                ${data.q2_details ? `<div class="day-detail-item">🚶 Kroki: ${data.q2_details}</div>` : ''}
-                ${data.q3_details ? `<div class="day-detail-item">🏋️ Trening: ${data.q3_details}</div>` : ''}
-                ${data.q4_details ? `<div class="day-detail-item">🧘 Rozciąganie: ${data.q4_details}</div>` : ''}
-                ${data.q7_details ? `<div class="day-detail-item">📚 Książka: ${data.q7_details}</div>` : ''}
-                ${data.q8_details ? `<div class="day-detail-item">📈 Umiejętności: ${data.q8_details}</div>` : ''}
-            </div>
-        `;
-
-        dayItem.addEventListener('click', () => {
-            const details = dayItem.querySelector('.day-details');
-            details.classList.toggle('show');
-        });
-
-        container.appendChild(dayItem);
-    });
-}
-
-// ===== NAWIGACJA ZAKŁADEK =====
-
+// ===== ZAKŁADKI =====
 function setupTabs() {
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const tabName = button.dataset.tab;
-            
-            // Usuwanie aktywnych klas
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabContents.forEach(content => content.classList.remove('active'));
-            
-            // Dodawanie aktywnej klasy
-            button.classList.add('active');
-            document.getElementById(`${tabName}-tab`).classList.add('active');
-            
-            // Jeśli otwarto statystyki, przelicz je na nowo
-            if (tabName === 'stats') {
-                displayStats();
-            }
-        });
+    const tabDaily = document.getElementById('tabDaily');
+    const tabStats = document.getElementById('tabStats');
+    const dailySection = document.getElementById('dailySection');
+    const statsSection = document.getElementById('statsSection');
+
+    tabDaily.addEventListener('click', () => {
+        tabDaily.classList.add('active');
+        tabStats.classList.remove('active');
+        dailySection.classList.remove('hidden');
+        statsSection.classList.add('hidden');
+    });
+
+    tabStats.addEventListener('click', () => {
+        tabStats.classList.add('active');
+        tabDaily.classList.remove('active');
+        statsSection.classList.remove('hidden');
+        dailySection.classList.add('hidden');
+        renderStats();
     });
 }
 
-// ===== INICJALIZACJA =====
+// ===== BACKUP (EXPORT/IMPORT JSON) =====
+function buildBackupPayload() {
+    return {
+        schemaVersion: 1,
+        exportedAt: new Date().toISOString(),
+        data: getAllData(),
+        streak: getStreakData()
+    };
+}
 
+function downloadJson(filename, obj) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+function handleExport() {
+    const payload = buildBackupPayload();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadJson(`daily-checker-backup_${ts}.json`, payload);
+    showToast('Wyeksportowano dane do pliku JSON.');
+}
+
+function parseBackupJson(text) {
+    const obj = JSON.parse(text);
+
+    if (!obj || typeof obj !== 'object') throw new Error('Nieprawidłowy plik.');
+    if (!('data' in obj) || !('streak' in obj)) throw new Error('Brak wymaganych pól w backupie.');
+
+    if (typeof obj.data !== 'object' || obj.data === null) throw new Error('Pole "data" jest nieprawidłowe.');
+    if (typeof obj.streak !== 'object' || obj.streak === null) throw new Error('Pole "streak" jest nieprawidłowe.');
+
+    return obj;
+}
+
+function handleImportFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const backup = parseBackupJson(reader.result);
+            const ok = confirm('Import nadpisze dane w aplikacji. Kontynuować?');
+            if (!ok) return;
+
+            saveAllData(backup.data);
+            saveStreakData(backup.streak);
+
+            updateStreakDisplay();
+            const dateStr = document.getElementById('dateInput').value || getTodayDateString();
+            loadFormData(dateStr);
+
+            showToast('Zaimportowano dane z pliku JSON.');
+        } catch (e) {
+            console.error(e);
+            alert('Nie udało się zaimportować danych: ' + (e.message || e));
+        }
+    };
+    reader.readAsText(file);
+}
+
+function setupBackupUi() {
+    const exportBtn = document.getElementById('exportJsonBtn');
+    const importBtn = document.getElementById('importJsonBtn');
+    const importInput = document.getElementById('importJsonInput');
+
+    if (exportBtn) exportBtn.addEventListener('click', handleExport);
+
+    if (importBtn && importInput) {
+        importBtn.addEventListener('click', () => importInput.click());
+        importInput.addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            handleImportFile(file);
+            importInput.value = '';
+        });
+    }
+}
+
+// ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-    // Ustawienie dzisiejszej daty
-    const today = formatDate(new Date());
     const dateInput = document.getElementById('dateInput');
+    const today = getTodayDateString();
+
+    // ustaw domyślną datę
     dateInput.value = today;
-    dateInput.max = today; // Nie można wybierać przyszłych dat
-    
-    // Ładowanie danych dla dzisiejszego dnia
+    document.getElementById('selectedDateLabel').textContent = formatDatePL(today);
+
+    // wczytaj dane formularza
     loadFormData(today);
-    
-    // Aktualizacja streak
+
+    // streak
     updateStreakDisplay();
-    
-    // Nawigacja zakładek
+
+    // zakładki + backup
     setupTabs();
     setupBackupUi();
-    
+
     // ===== EVENT LISTENERS =====
-    
-    // Zmiana daty
+
+    // zmiana daty
     dateInput.addEventListener('change', (e) => {
-        loadFormData(e.target.value);
+        const dateStr = e.target.value;
+        document.getElementById('selectedDateLabel').textContent = formatDatePL(dateStr);
+        loadFormData(dateStr);
     });
-    
-    // Aktualizacja wyświetlania slidera
-    document.getElementById('q9_answer').addEventListener('input', updateRatingDisplay);
-    
-    // Zapisywanie formularza
+
+    // Aktualizacja wyświetlania slidera (iOS/PWA fix)
+    const ratingSlider = document.getElementById('q9_answer');
+    if (ratingSlider) {
+        // iOS (Safari/PWA): input może nie odświeżać wartości w trakcie przeciągania,
+        // więc nasłuchujemy też change + zdarzeń dotykowych.
+        ['input', 'change', 'touchmove', 'touchend'].forEach((evt) => {
+            ratingSlider.addEventListener(evt, updateRatingDisplay, { passive: true });
+        });
+        updateRatingDisplay();
+    }
+
+    // zapisywanie formularza
     document.getElementById('dailyForm').addEventListener('submit', (e) => {
         e.preventDefault();
-        
-        const selectedDate = dateInput.value;
-        const formData = getFormData();
-        
-        saveDayData(selectedDate, formData);
+
+        const dateStr = dateInput.value;
+        const allData = getAllData();
+        allData[dateStr] = getFormDataFromUI();
+        saveAllData(allData);
+
+        updateStreakOnComplete(dateStr);
         updateStreakDisplay();
-        showToast('✅ Dzień zapisany pomyślnie!');
+
+        showToast('Zapisano dzień!');
     });
-    
-    // Czyszczenie formularza
-    document.getElementById('clearBtn').addEventListener('click', () => {
-        if (confirm('Czy na pewno chcesz wyczyścić formularz? (Nie usunie to zapisanych danych)')) {
-            clearForm();
-            showToast('🗑️ Formularz wyczyszczony');
-        }
+
+    // czyszczenie formularza
+    document.getElementById('clearFormBtn').addEventListener('click', () => {
+        clearFormUI(true);
     });
-    
-    // Usuwanie zapisu dnia
-        const selectedDate = dateInput.value;
-        
-        if (confirm(`Czy na pewno chcesz usunąć zapis z dnia ${formatDateReadable(selectedDate)}?`)) {
-            if (deleteDayData(selectedDate)) {
-                clearForm();
-                updateStreakDisplay();
-                showToast('❌ Zapis usunięty');
-            } else {
-                showToast('⚠️ Brak zapisu do usunięcia');
-            }
-        }
-    });
-    
-    // Rejestracja Service Worker
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-            .then(registration => {
-                console.log('Service Worker zarejestrowany:', registration);
-            })
-            .catch(error => {
-                console.log('Błąd rejestracji Service Worker:', error);
-            });
-    }
 });
